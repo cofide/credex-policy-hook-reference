@@ -8,4 +8,4 @@ The [hook](./hook) directory contains a simple Go-based webserver which can act 
 
 The [hook/server.go](./hook/server.go) file contains `hookResponse` and `hookRequest` type definitions that any Credex policy hook must satisfy, as well as an example SPIFFE mTLS setup for secure communication between Credex and the external hook.
 
-For more information, see the [Cofide Credex External Hooks documentation](https://docs.cofide.dev/credex/usage/#external-hooks).
+For more information, see the [Cofide Credex External Hooks documentation](https://docs.cofide.dev/credex/exchange-policies/#external-hooks).
