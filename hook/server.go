@@ -96,10 +96,19 @@ func newServer(path string, claimsPatch jsonpatch.Patch, logger *slog.Logger) *s
 			return
 		}
 
-		var req hookRequest
+		// Older versions of Credex send the legacy payload format, with
+		// subject_claims at the top level rather than under subject.
+		var req struct {
+			hookRequest
+			LegacySubjectClaims map[string]any `json:"subject_claims"`
+		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, fmt.Sprintf("bad request: %s", err), http.StatusBadRequest)
 			return
+		}
+		subjectClaims := req.Subject.Claims
+		if subjectClaims == nil {
+			subjectClaims = req.LegacySubjectClaims
 		}
 
 		resp := hookResponse{
@@ -108,7 +117,7 @@ func newServer(path string, claimsPatch jsonpatch.Patch, logger *slog.Logger) *s
 		}
 
 		// Deny request for 'fake-audience'
-		if aud, ok := req.Subject.Claims["aud"]; ok {
+		if aud, ok := subjectClaims["aud"]; ok {
 			if auds, ok := aud.([]any); ok && slices.Contains(auds, "fake-audience") {
 				resp = hookResponse{
 					Action:       HookActionDeny,
