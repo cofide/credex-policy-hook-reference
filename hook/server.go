@@ -33,14 +33,14 @@ type subject struct {
 
 // actor is a validated actor token and the delegation chain it extends.
 type actor struct {
-	Claims map[string]any  `json:"claims"`
-	Chain  []exchangeActor `json:"chain,omitempty"`
+	Claims         map[string]any  `json:"claims"`
+	PreviousActors []exchangeActor `json:"previous_actors,omitempty"`
 }
 
 // exchangeActor identifies a party in a delegation chain.
 type exchangeActor struct {
-	Identity string `json:"identity"`
-	Issuer   string `json:"issuer"`
+	Subject string `json:"sub"`
+	Issuer  string `json:"iss"`
 }
 
 // client is the authenticated OAuth client making a token exchange request.
@@ -56,7 +56,6 @@ type request struct {
 	ActorTokenType     string   `json:"actor_token_type,omitempty"`
 	RequestedTokenType string   `json:"requested_token_type,omitempty"`
 	Audience           []string `json:"audience,omitempty"`
-	Resource           []string `json:"resource,omitempty"`
 	Scope              []string `json:"scope"`
 }
 
