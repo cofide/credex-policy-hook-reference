@@ -26,12 +26,49 @@ const (
 	HookActionDeny  HookAction = "deny"
 )
 
+// subject is a validated subject token.
+type subject struct {
+	Claims map[string]any `json:"claims"`
+}
+
+// actor is a validated actor token and the delegation chain it extends.
+type actor struct {
+	Claims         map[string]any  `json:"claims"`
+	PreviousActors []exchangeActor `json:"previous_actors,omitempty"`
+}
+
+// exchangeActor identifies a party in a delegation chain.
+type exchangeActor struct {
+	Subject string `json:"sub"`
+	Issuer  string `json:"iss"`
+}
+
+// client is the authenticated OAuth client making a token exchange request.
+type client struct {
+	ID string `json:"id"`
+}
+
+// request holds the parameters of a token exchange request as
+// supplied by the caller. Unlike token claims, these have not been
+// verified by a token signature and should be treated as untrusted.
+type request struct {
+	SubjectTokenType   string   `json:"subject_token_type"`
+	ActorTokenType     string   `json:"actor_token_type,omitempty"`
+	RequestedTokenType string   `json:"requested_token_type,omitempty"`
+	Audience           []string `json:"audience,omitempty"`
+	Scope              []string `json:"scope"`
+}
+
+// hookRequest is the HTTP body sent to the hook by Credex.
 type hookRequest struct {
-	SubjectClaims  map[string]any `json:"subject_claims"`
-	ActorClaims    map[string]any `json:"actor_claims,omitempty"`
+	Subject        subject        `json:"subject"`
+	Actor          actor          `json:"actor,omitempty"`
+	Client         client         `json:"client"`
+	Request        request        `json:"request"`
 	OutboundClaims map[string]any `json:"outbound_claims"`
 }
 
+// hookResponse is the HTTP response Credex expects the hook to return.
 type hookResponse struct {
 	ClaimsPatch  jsonpatch.Patch `json:"claims_patch,omitempty"`
 	Action       HookAction      `json:"action"`
@@ -58,10 +95,19 @@ func newServer(path string, claimsPatch jsonpatch.Patch, logger *slog.Logger) *s
 			return
 		}
 
-		var req hookRequest
+		// Older versions of Credex send the legacy payload format, with
+		// subject_claims at the top level rather than under subject.
+		var req struct {
+			hookRequest
+			LegacySubjectClaims map[string]any `json:"subject_claims"`
+		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, fmt.Sprintf("bad request: %s", err), http.StatusBadRequest)
 			return
+		}
+		subjectClaims := req.Subject.Claims
+		if subjectClaims == nil {
+			subjectClaims = req.LegacySubjectClaims
 		}
 
 		resp := hookResponse{
@@ -70,7 +116,7 @@ func newServer(path string, claimsPatch jsonpatch.Patch, logger *slog.Logger) *s
 		}
 
 		// Deny request for 'fake-audience'
-		if aud, ok := req.SubjectClaims["aud"]; ok {
+		if aud, ok := subjectClaims["aud"]; ok {
 			if auds, ok := aud.([]any); ok && slices.Contains(auds, "fake-audience") {
 				resp = hookResponse{
 					Action:       HookActionDeny,
