@@ -26,6 +26,11 @@ const (
 	HookActionDeny  HookAction = "deny"
 )
 
+const (
+	tokenTypeClientAssertion = "urn:cofide:params:oauth:token-type:client-assertion:jwt-bearer"
+	hintRequestedClientID    = "requested_client_id"
+)
+
 // subject is a validated subject token.
 type subject struct {
 	Claims map[string]any `json:"claims"`
@@ -57,6 +62,8 @@ type request struct {
 	RequestedTokenType string   `json:"requested_token_type,omitempty"`
 	Audience           []string `json:"audience,omitempty"`
 	Scope              []string `json:"scope"`
+	// Hints are the hint_* request parameters with the prefix removed.
+	Hints map[string]string `json:"hints,omitempty"`
 }
 
 // hookRequest is the HTTP body sent to the hook by Credex.
@@ -87,7 +94,19 @@ type server struct {
 	healthServer *http.Server
 }
 
-func newServer(path string, claimsPatch jsonpatch.Patch, logger *slog.Logger) *server {
+// clientIDPatch returns a JSON patch that sets both iss and sub of a client assertion to clientID.
+func clientIDPatch(clientID string) (jsonpatch.Patch, error) {
+	ops, err := json.Marshal([]map[string]any{
+		{"op": "add", "path": "/iss", "value": clientID},
+		{"op": "add", "path": "/sub", "value": clientID},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return jsonpatch.DecodePatch(ops)
+}
+
+func newServer(path string, claimsPatch jsonpatch.Patch, allowedClientIDs []string, logger *slog.Logger) *server {
 	mux := http.NewServeMux()
 	mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -121,6 +140,25 @@ func newServer(path string, claimsPatch jsonpatch.Patch, logger *slog.Logger) *s
 				resp = hookResponse{
 					Action:       HookActionDeny,
 					ActionReason: "Exchange not permitted for target audience",
+				}
+			}
+		}
+
+		// On a client assertion exchange the hook may choose which client the assertion is for by
+		// patching iss and sub, which must stay equal. The hint is caller-supplied and untrusted, so
+		// it is only honoured if it is on the allow-list. A real hook would also check the requested
+		// client against the verified subject, actor and client identities in the request.
+		if resp.Action == HookActionAllow && req.Request.RequestedTokenType == tokenTypeClientAssertion {
+			if clientID, ok := req.Request.Hints[hintRequestedClientID]; ok {
+				if !slices.Contains(allowedClientIDs, clientID) {
+					resp = hookResponse{Action: HookActionDeny, ActionReason: "Requested client ID not permitted"}
+				} else {
+					patch, err := clientIDPatch(clientID)
+					if err != nil {
+						http.Error(w, fmt.Sprintf("failed to build patch: %s", err), http.StatusInternalServerError)
+						return
+					}
+					resp.ClaimsPatch = append(slices.Clone(claimsPatch), patch...)
 				}
 			}
 		}

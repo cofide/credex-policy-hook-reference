@@ -32,6 +32,8 @@ spec:
           env:
             - name: ALLOWED_CLIENT_SPIFFE_IDS
               value: "${CREDEX_SPIFFE_ID}"
+            - name: HOOK_ALLOWED_REQUESTED_CLIENT_IDS
+              value: "spiffe://local.exchange/ns/e2e-test/sa/e2e-hinted-client"
             - name: SPIFFE_ENDPOINT_SOCKET
               value: "unix:///run/spire/sockets/spire-agent.sock"
           ports:

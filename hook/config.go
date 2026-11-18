@@ -17,6 +17,7 @@ type config struct {
 	healthAddr             net.Addr
 	path                   string
 	claimsPatch            jsonpatch.Patch
+	allowedClientIDs       []string
 	shutdownTimeout        time.Duration
 }
 
@@ -74,6 +75,17 @@ func loadConfig() (config, error) {
 		return config{}, fmt.Errorf("invalid HOOK_CLAIMS_PATCH: %w", err)
 	}
 
+	// Client IDs a client assertion exchange may request via the requested_client_id hint.
+	// Unset means none, so every requested client ID is denied.
+	var allowedClientIDs []string
+	for s := range strings.SplitSeq(os.Getenv("HOOK_ALLOWED_REQUESTED_CLIENT_IDS"), ",") {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		allowedClientIDs = append(allowedClientIDs, s)
+	}
+
 	// Shutdown timeout
 	shutdownTimeoutStr := os.Getenv("SHUTDOWN_TIMEOUT")
 	if shutdownTimeoutStr == "" {
@@ -90,6 +102,7 @@ func loadConfig() (config, error) {
 		healthAddr:             healthAddr,
 		path:                   path,
 		claimsPatch:            claimsPatch,
+		allowedClientIDs:       allowedClientIDs,
 		shutdownTimeout:        shutdownTimeout,
 	}, nil
 }

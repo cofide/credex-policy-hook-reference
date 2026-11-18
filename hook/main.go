@@ -38,7 +38,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}
 	defer func() { _ = x509Source.Close() }()
 
-	server := newServer(cfg.path, cfg.claimsPatch, logger)
+	server := newServer(cfg.path, cfg.claimsPatch, cfg.allowedClientIDs, logger)
 
 	return server.run(ctx, x509Source, cfg.allowedClientSpiffeIDs, cfg.listenAddr, cfg.healthAddr, cfg.shutdownTimeout)
 }
